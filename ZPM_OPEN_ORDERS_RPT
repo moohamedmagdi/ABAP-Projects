@@ -1,0 +1,81 @@
+REPORT zpm_open_orders_rpt.
+
+TABLES: aufk, equi, eqkt, iflo, jest, tj02t.
+
+TYPE-POOLS: slis.
+
+TYPES: BEGIN OF ty_data,
+         aufnr      TYPE aufk-aufnr,
+         equnr      TYPE equi-equnr,
+         eqtyp      TYPE equi-eqtyp,
+         stort      TYPE equi-stort,
+         tplnr      TYPE iflo-tplnr,
+         erdat      TYPE aufk-erdat,
+         auart      TYPE aufk-auart,
+         objnr      TYPE aufk-objnr,
+         status     TYPE tj02t-txt04,
+         ktext      TYPE eqkt-ktext,
+       END OF ty_data.
+
+DATA: gt_data TYPE TABLE OF ty_data,
+      gs_data TYPE ty_data.
+
+SELECT-OPTIONS: s_eqtyp FOR equi-eqtyp,
+                s_stort FOR equi-stort,
+                s_vaplz FOR aufk-vaplz,
+                s_erdat FOR aufk-erdat.
+
+START-OF-SELECTION.
+
+  SELECT a~aufnr a~erdat a~auart a~objnr
+         e~equnr e~eqtyp e~stort
+         k~ktext
+         f~tplnr
+    INTO CORRESPONDING FIELDS OF TABLE gt_data
+    FROM aufk AS a
+    INNER JOIN equi AS e ON a~eqnum = e~equnr
+    LEFT JOIN eqkt AS k ON k~equnr = e~equnr AND k~spras = sy-langu
+    LEFT JOIN iflo AS f ON f~tplnr = e~tplnr
+    WHERE e~eqtyp IN s_eqtyp
+      AND e~stort IN s_stort
+      AND a~vaplz IN s_vaplz
+      AND a~erdat IN s_erdat.
+
+  LOOP AT gt_data INTO gs_data.
+    " جلب الحالة (مثلاً REL أو CRTD)
+    SELECT SINGLE t~txt04 INTO gs_data-status
+      FROM jest AS j
+      INNER JOIN tj02t AS t ON j~stat = t~istat AND t~spras = sy-langu
+      WHERE j~objnr = gs_data-objnr AND j~inact = ''.
+
+    MODIFY gt_data FROM gs_data.
+  ENDLOOP.
+
+  " عرض ALV
+  DATA: lt_fieldcat TYPE slis_t_fieldcat_alv,
+        ls_fieldcat TYPE slis_fieldcat_alv.
+
+  DEFINE add_field.
+    ls_fieldcat-fieldname = &1.
+    ls_fieldcat-seltext_m = &2.
+    APPEND ls_fieldcat TO lt_fieldcat.
+    CLEAR ls_fieldcat.
+  END-OF-DEFINITION.
+
+  add_field 'AUFNR' 'Order'.
+  add_field 'EQUNR' 'Equipment'.
+  add_field 'EQTYP' 'Equip Type'.
+  add_field 'STORT' 'Location'.
+  add_field 'TPLNR' 'Func Loc'.
+  add_field 'ERDAT' 'Created On'.
+  add_field 'AUART' 'Order Type'.
+  add_field 'STATUS' 'Status'.
+  add_field 'KTEXT' 'Description'.
+
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+      i_callback_program = sy-repid
+      it_fieldcat        = lt_fieldcat
+    TABLES
+      t_outtab           = gt_data.
+
