@@ -1,0 +1,38 @@
+REPORT zpm_failure_analysis.
+
+TABLES: viqmel.
+
+DATA: lt_notifications TYPE TABLE OF viqmel,
+      lt_fieldcat      TYPE lvc_t_fcat,
+      lo_alv           TYPE REF TO cl_salv_table.
+
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE text-001.
+PARAMETERS: p_dfrom TYPE viqmel-qmdat OBLIGATORY,
+            p_dto   TYPE viqmel-qmdat OBLIGATORY.
+SELECT-OPTIONS: s_qmart FOR viqmel-qmart,
+                s_equnr FOR viqmel-equnr,
+                s_tplnr FOR viqmel-tplnr.
+SELECTION-SCREEN END OF BLOCK b1.
+
+START-OF-SELECTION.
+
+  SELECT * FROM viqmel INTO TABLE lt_notifications
+    WHERE qmdat BETWEEN p_dfrom AND p_dto
+      AND qmart IN s_qmart
+      AND equnr IN s_equnr
+      AND tplnr IN s_tplnr.
+
+  IF sy-subrc = 0.
+    TRY.
+        cl_salv_table=>factory(
+          IMPORTING r_salv_table = lo_alv
+          CHANGING  t_table      = lt_notifications
+        ).
+
+        lo_alv->display( ).
+      CATCH cx_salv_msg INTO DATA(lx_msg).
+        MESSAGE lx_msg->get_text( ) TYPE 'E'.
+    ENDTRY.
+  ELSE.
+    WRITE: / 'No notifications found for the given filters.'.
+  ENDIF.
