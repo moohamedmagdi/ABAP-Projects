@@ -1,0 +1,66 @@
+*&---------------------------------------------------------------------*
+*& Report ZPM_ORDER_REPORT
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT zpm_order_report.
+
+DATA: lt_orders TYPE TABLE OF aufk,             " جدول البيانات
+      lo_alv    TYPE REF TO cl_salv_table,      " كائن الـ ALV
+      lo_func   TYPE REF TO cl_salv_functions_list,  " لعرض الأدوات (الزرار اللي فوق)
+      lo_cols   TYPE REF TO cl_salv_columns_table,   " الأعمدة للتحكم في الخصائص
+      lo_col    TYPE REF TO cl_salv_column,     " عمود واحد فقط
+      lo_disp   TYPE REF TO cl_salv_display_settings, " إعدادات العرض
+      lo_sorts  TYPE REF TO cl_salv_sorts.      " الفرز
+
+PARAMETERS: p_dfrom TYPE aufk-erdat OBLIGATORY,
+            p_dto   TYPE aufk-erdat OBLIGATORY.
+
+START-OF-SELECTION.
+
+* 1. قراءة البيانات من جدول أوامر الصيانة
+  SELECT * FROM aufk
+    INTO TABLE lt_orders
+    WHERE erdat BETWEEN p_dfrom AND p_dto.
+
+* 2. التحقق من وجود بيانات
+  IF lt_orders IS INITIAL.
+    MESSAGE 'No maintenance orders found in the selected range.' TYPE 'I'.
+    RETURN.
+  ENDIF.
+
+* 3. إنشاء الـ ALV باستخدام SALV
+  TRY.
+      cl_salv_table=>factory(
+        IMPORTING r_salv_table = lo_alv
+        CHANGING  t_table      = lt_orders ).
+
+* 4. تمكين الفلترة، الطباعة، التصدير للإكسل، وغيرها
+      lo_func = lo_alv->get_functions( ).
+      lo_func->set_all( abap_true ).  " تشغيل كل الأدوات
+
+* 5. إعدادات العرض: العنوان، الخط، وغيرها
+      lo_disp = lo_alv->get_display_settings( ).
+      lo_disp->set_list_header( 'Maintenance Orders Overview' ).
+      lo_disp->set_striped_pattern( abap_true ). " تلوين صفوف بالتبادل
+
+* 6. إعداد الأعمدة (تغيير اسم عمود مثلاً)
+      lo_cols = lo_alv->get_columns( ).
+
+      TRY.
+          lo_col = lo_cols->get_column( 'AUFNR' ). " رقم أمر الصيانة
+          lo_col->set_long_text( 'Order Number' ).
+        CATCH cx_salv_not_found.
+      ENDTRY.
+
+* 7. إعداد الفرز (مثلاً فرز حسب تاريخ الإنشاء)
+      lo_sorts = lo_alv->get_sorts( ).
+      lo_sorts->add_sort( columnname = 'ERDAT' ).
+
+* 8. عرض الـ ALV
+      lo_alv->display( ).
+
+    CATCH cx_salv_msg INTO DATA(lx_msg).
+      MESSAGE lx_msg->get_text( ) TYPE 'E'.
+
+  ENDTRY.
